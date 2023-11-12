@@ -34,9 +34,9 @@ async def on_message(message):
                 async for message in channel.history(limit=200):
                     if message.author.name == "jcho_114":
                         res += formatter("<Q>", message.content) + '\n'
-        f = open("file.txt", "w")
+        f = open(".txt", "w")
         f.write(res)
         f.close()
-        await message.channel.send(file=discord.File("file.txt"))
+        await message.channel.send(file=discord.File(".txt"))
 
 client.run(os.environ.get("TOKEN"))
