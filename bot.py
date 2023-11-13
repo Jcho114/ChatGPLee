@@ -1,5 +1,5 @@
 import os
-import openai
+import re
 import discord
 from os.path import join, dirname
 from dotenv import load_dotenv
@@ -29,11 +29,14 @@ async def on_message(message):
         await message.channel.send('Hello!')
     if message.content.startswith('$history') and message.author.name == "jcho_114":
         res = ''
+        if re.match(r"\$history (\w+)", message.content):
+            username = re.match(r"\$history (\w+)", message.content)[1]
+        else: await message.channel.send("Invalid Command Format")
         channels = client.get_all_channels()
         for channel in channels:
             if isinstance(channel, discord.TextChannel):
                 async for message in channel.history(limit=200):
-                    if message.author.name == "jcho_114":
+                    if message.author.name.lower() == username.lower():
                         res += formatter("<Q>", message.content) + '\n'
         f = open(".txt", "w")
         f.write(res)
