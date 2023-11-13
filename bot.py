@@ -23,9 +23,6 @@ def formatter(Q, R):
     return json_str
 
 def isValidMessage(M):
-    M = re.sub("\s<@!\d{18}>\s", "", M)
-    M = re.sub("\s<@\d{18}>\s", "", M)
-    M = re.sub("\s<:.:\d{18}>\s", "", M)
     return not M.content.startswith("https://") and M.content != "" and not re.match(r'^"', M.content)
 
 @client.event
