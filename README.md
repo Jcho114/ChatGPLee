@@ -1,4 +1,5 @@
 # ChatGPLee
+A GPT 3.5 based Discord bot meant to respond to users with messages resembling those of the notorious Discord user Mashyy. and (to an extent) his imposter rnashy. Includes the use of OpenAI's fine-tuning of the GPT3.5 model based on a given dataset. Bot includes the ability to respond to pings, collect Discord message data of a user (admin command), and take screenshots of previous messages. The bot, at the moment, has some weird issues to fix (responding and mentioning its own prompt, repeating the user's message back to them) but it is quite comedic. 
 
 ## Public Commands
 
