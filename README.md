@@ -35,8 +35,12 @@ $ct <temperature>
 ```
 Changes the current bot's temperature to \<temperature\>.
 The lower the temperature, the more coherent and less creative the bot is. The opposite it true for high temperatures.
+\<temperature\> is limited to floating point values between 0.0 (noninclusive) and 2.0 (inclusive).
 
 ```
 $cm <model>
 ```
 Changes the current bot's model to \<model\>.
+\<model\> is currently limited to two inputs:
+- MASHYY
+- COMBINED
