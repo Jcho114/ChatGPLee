@@ -8,28 +8,20 @@ $help
 ```
 Provides a summary of commands.
 
-<hr>
-
 ```
 $settings
 ```
 Provides the bot's current settings.
-
-<hr>
 
 ```
 @ChatGPLee <message>
 ```
 Format to ask @ChatGPLee a \<message\>. Uses a fine-tuned gpt3.5-turbo model to send back a response.
 
-<hr>
-
 ```
 $ss <message-count>
 ```
 Provides a screenshot of the past \<message-count\> messages in a reply chain.
-
-<hr>
 
 ## Privileged Commands
 
@@ -38,16 +30,12 @@ $history <username> <output-file-name> <limit>
 ```
 Filters past \<limit\> messages to provide a history of \<username\> messages in jsonl format.
 
-<hr>
-
 ```
 $ct <temperature>
 ```
 Changes the current bot's temperature to \<temperature\>.
 The lower the temperature, the more coherent and less creative the bot is. The opposite it true for high temperatures.
 \<temperature\> is limited to floating point values between 0.0 (noninclusive) and 2.0 (inclusive).
-
-<hr>
 
 ```
 $cm <model>
