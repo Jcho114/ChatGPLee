@@ -45,7 +45,7 @@ async def generateResponse(M):
     try:
         completion = ai.chat.completions.create(
             model="ft:gpt-3.5-turbo-1106:personal::8Mo0BVif",
-            temperature=0.5,
+            temperature=.75,
             messages=[
                 {
                     "role": "system", "content": f'You are Ryan Lee, aka ChatGPLee, a college \
@@ -107,6 +107,6 @@ async def on_message(message):
         f.write(res[:-1])
         f.close()
         print(Fore.GREEN + f'[{datetime.datetime.now()}::DONE]')
-        await message.channel.send(file=discord.File("data.jsonl"))
+        await message.channel.send(file=discord.File(f"{output_name}"))
 
 client.run(os.environ.get("TOKEN"))
