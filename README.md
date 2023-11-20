@@ -6,41 +6,42 @@ A GPT 3.5 based Discord bot meant to respond to users with messages resembling t
 ```
 $help
 ```
-Provides a summary of commands.
+
+>Provides a summary of commands.
 
 ```
 $settings
 ```
-Provides the bot's current settings.
+>Provides the bot's current settings.
 
 ```
 @ChatGPLee <message>
 ```
-Format to ask @ChatGPLee a \<message\>. Uses a fine-tuned gpt3.5-turbo model to send back a response.
+>Format to ask @ChatGPLee a \<message\>. Uses a fine-tuned gpt3.5-turbo model to send back a response.
 
 ```
 $ss <message-count>
 ```
-Provides a screenshot of the past \<message-count\> messages in a reply chain.
+>Provides a screenshot of the past \<message-count\> messages in a reply chain.
 
 ## Privileged Commands
 
 ```
 $history <username> <output-file-name> <limit>
 ```
-Filters past \<limit\> messages to provide a history of \<username\> messages in jsonl format.
+>Filters past \<limit\> messages to provide a history of \<username\> messages in jsonl format.
 
 ```
 $ct <temperature>
 ```
-Changes the current bot's temperature to \<temperature\>.
-The lower the temperature, the more coherent and less creative the bot is. The opposite it true for high temperatures.
-\<temperature\> is limited to floating point values between 0.0 (noninclusive) and 2.0 (inclusive).
+>Changes the current bot's temperature to \<temperature\>.
+>The lower the temperature, the more coherent and less creative the bot is. The opposite it true for high temperatures.
+>\<temperature\> is limited to floating point values between 0.0 (noninclusive) and 2.0 (inclusive).
 
 ```
 $cm <model>
 ```
-Changes the current bot's model to \<model\>.
-\<model\> is currently limited to two inputs:
-- MASHYY
-- COMBINED
+>Changes the current bot's model to \<model\>.
+>\<model\> is currently limited to two inputs:
+>* MASHYY
+>* COMBINED
