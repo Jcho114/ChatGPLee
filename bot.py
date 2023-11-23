@@ -1,4 +1,5 @@
 import functools
+import json
 import os
 import random
 import re
@@ -27,13 +28,14 @@ MSG_PROB = 0.01
 ADMIN = "jcho_114"
 MODELS = {
     "MASHYY": "ft:gpt-3.5-turbo-1106:personal::8Mo0BVif",
+    "MASHYY-GPT": "ft:gpt-3.5-turbo-1106:personal::8OBVMd59",
     "COMBINED-LEGACY": "ft:gpt-3.5-turbo-1106:personal::8MqQfeYh",
-    "COMBINED": "ft:gpt-3.5-turbo-1106:personal::8Nxi2PqH"
+    "COMBINED": "ft:gpt-3.5-turbo-1106:personal::8Nxi2PqH",
 }
 SETTINGS = {
-    "temperature": 0.6,
-    "model": "COMBINED",
-    "reply_memory": 4,
+    "temperature": 1,
+    "model": "MASHYY-GPT",
+    "reply_memory": 8,
     "frequency_penalty": 0,
     "presence_penalty": 0,
     "max_chars": 500
@@ -68,25 +70,26 @@ async def generateResponse(ctx):
     async def replyHistory(ctx):
         res = [filter(ctx.content)]
         count = 0
-        messages = set()
         while ctx.reference and count < SETTINGS["reply_memory"]:
             channel = bot.get_channel(ctx.reference.channel_id)
             ctx = await channel.fetch_message(ctx.reference.message_id)
             filtered = filter(ctx.content)
             res.append(filtered)
-            if filtered not in messages:
-                messages.add(filtered)
-                count += 1
+            count += 1
         return res
-    @to_thread
     def addToPromptList(history, prompts):
         messages = set()
-        while len(history):
-            message = history.pop()
-            if message not in messages:
-                prompts.append({"role": "user" if len(history) % 2 != 0 else "assistant", "content": message})
-            messages.add(message)
-    @to_thread
+        while len(history) > 1:
+            m1, m2 = history.pop(), history.pop()
+            if m1 not in messages and m2 not in messages:
+                prompts.append({"role": "user", "content": m1})
+                prompts.append({"role": "assistant", "content": m2})
+            messages.add(m1)
+            messages.add(m2)
+        if len(history):
+            latest_message = history.pop()
+            prompts.append({"role": "user", "content": latest_message})
+        print(format(json.dumps(prompts, indent=2)))
     def completeScenario(prev_messages):
         return ai.chat.completions.create(
             model=f'{MODELS[SETTINGS["model"]]}',
@@ -98,12 +101,11 @@ async def generateResponse(ctx):
         )
     try:
         prev_messages = [
-            {"role": "system", "content": f'You are Ryan Lee, a college student who likes videogames, memes, and anime. You have weird humor and you have many opinions.'}
+            {"role": "system", "content": f'You are Ryan Lee, a college student who likes videogames, memes, and anime. You have weird humor and you have many opinions. You are creative, and you don\'t like to repeat what people say.'}
         ]
         replies = await replyHistory(ctx)
-        await addToPromptList(replies[:-1], prev_messages)
-        prev_messages.append({"role": "system", "content": f"Reply to the this most recent user message in the pursuit of continuing the conversation: {replies[-1]}"})
-        completion = await completeScenario(prev_messages)
+        addToPromptList(replies, prev_messages)
+        completion = completeScenario(prev_messages)
         response = completion.choices[0].message.content
         print(Fore.GREEN + f'[{datetime.datetime.now()}::MESSAGE GENERATED] {response}')
         await ctx.reply(f'{response}', mention_author=False)
@@ -252,56 +254,6 @@ async def sync(interaction):
         except Exception as e:
             print(e)
             await interaction.response.send_message("Failed to sync command(s)")
-
-@bot.command()
-async def sync(ctx):
-    if ctx.author.name == ADMIN :
-        try:
-            synced = await tree.sync()
-            message = f'Synced {len(synced)} command(s)'
-            print(message)
-            await ctx.channel.send(message)
-        except Exception as e:
-            print(e)
-            await ctx.channel.send("Failed to sync command(s)")
-    else:
-        await ctx.channel.send("Access Denied")
-
-@bot.command()
-async def history(ctx):
-    @to_thread
-    def generateQuestion(response):
-        completion = ai.chat.completions.create(
-            model='gpt-3.5-turbo-1106',
-            max_tokens=random.randint(20,60),
-            messages=[
-                {"role": "system", "content": f"You are Ryan Lee, a college student who likes videogames, memes, and anime. "
-                 + "You have weird humor and you have many opinions."},
-                {"role": "system", "content": f"Create a single message that would lead to this response: \"{response}\". "
-                 + "Make it general, casual, and short, basically a quick text in a groupchat of friends. Do not include any "
-                 + "emojis. It doesn't have to be a question. Do not repeat the original message verbatim."}
-            ]
-        )
-        return completion.choices[0].message.content
-    async def gpt(limit):
-        nonlocal res
-        async for message in channel.history(limit=limit):
-            if message.author.name.lower() == '.mashyy.' and isValidMessage(message.content):
-                print(Fore.GREEN + f'[{datetime.datetime.now()}::MESSAGE FOUND] {filter(message.content)}')
-                question = await generateQuestion(message.content)
-                res += formatter(question, message.content) + '\n'
-                print(Fore.GREEN + f'[{datetime.datetime.now()}::GENERATED QUESTION] {filter(question)}')
-    print(Fore.GREEN + f'[{datetime.datetime.now()}::STARTING HISTORY]')
-    if ctx.author.name == ADMIN:
-        res = ''
-        for channel in ctx.guild.channels:
-            if isinstance(channel, discord.TextChannel):
-                await gpt(2000)
-        f = open(f"test.jsonl", "w")
-        f.write(res[:-1])
-        f.close()
-        print(Fore.GREEN + f'[{datetime.datetime.now()}::DONE]')
-        await ctx.channel.send(file=discord.File(f"test.jsonl"))
 
 def codeblock(M):
     return f'```python\n{M}\n```'
