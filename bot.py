@@ -31,6 +31,7 @@ MODELS = {
     "MASHYY-GPT": "ft:gpt-3.5-turbo-1106:personal::8OBVMd59",
     "COMBINED-LEGACY": "ft:gpt-3.5-turbo-1106:personal::8MqQfeYh",
     "COMBINED": "ft:gpt-3.5-turbo-1106:personal::8Nxi2PqH",
+    "GPT3": "gpt-3.5-turbo-1106",
 }
 SETTINGS = {
     "temperature": 1,
@@ -90,6 +91,7 @@ async def generateResponse(ctx):
             latest_message = history.pop()
             prompts.append({"role": "user", "content": latest_message})
         print(format(json.dumps(prompts, indent=2)))
+    @to_thread
     def completeScenario(prev_messages):
         return ai.chat.completions.create(
             model=f'{MODELS[SETTINGS["model"]]}',
@@ -105,7 +107,7 @@ async def generateResponse(ctx):
         ]
         replies = await replyHistory(ctx)
         addToPromptList(replies, prev_messages)
-        completion = completeScenario(prev_messages)
+        completion = await completeScenario(prev_messages)
         response = completion.choices[0].message.content
         print(Fore.GREEN + f'[{datetime.datetime.now()}::MESSAGE GENERATED] {response}')
         await ctx.reply(f'{response}', mention_author=False)
@@ -163,7 +165,7 @@ async def cm(interaction, model: str):
         if model in MODELS:
             SETTINGS["model"] = model
             print(Fore.GREEN + f'[{datetime.datetime.now()}::CHANGING MODEL] NEW MODEL: {model}')
-            await interaction.reply.send_message(codeblock(f'Changed model of model {SETTINGS["model"]} to {SETTINGS["model"]}'))
+            await interaction.response.send_message(codeblock(f'Changed to {model}'))
         else:
             print(Fore.RED + f'[{datetime.datetime.now()}::INVALID INPUT] FOR COMMAND $cm')
             await interaction.response.send_message(codeblock(f'Invalid parameters, maintaining current settings ({encodeSettings()})'))
@@ -173,9 +175,9 @@ async def cm(interaction, model: str):
 async def cmc(interaction, max_chars: int):
     if await checkPermissions(interaction):
         if max_chars >= 10 and max_chars <= 1000:
-            SETTINGS["max_chars"] = max_chars
             print(Fore.GREEN + f'[{datetime.datetime.now()}::CHANGING MAX_CHARS] NEW MAX_CHARS: {max_chars}')
-            await interaction.reply.send_message(codeblock(f'Changed max_chars of model {SETTINGS["model"]} to {SETTINGS["max_chars"]}'))
+            SETTINGS["max_chars"] = max_chars
+            await interaction.response.send_message(codeblock(f'Changed max_chars of model {SETTINGS["model"]} to {max_chars}'))
         else:
             print(Fore.RED + f'[{datetime.datetime.now()}::INVALID INPUT] FOR COMMAND $cmc')
             await interaction.response.send_message(codeblock(f'Invalid parameters, maintaining current settings ({encodeSettings()})'))
@@ -185,9 +187,9 @@ async def cmc(interaction, max_chars: int):
 async def crm(interaction, reply_memory: int):
     if await checkPermissions(interaction):
         if reply_memory > 0 and reply_memory <= 10:
-            SETTINGS["reply_memory"] = reply_memory
             print(Fore.GREEN + f'[{datetime.datetime.now()}::CHANGING MAX_CHARS] NEW MAX_CHARS: {reply_memory}')
-            await interaction.reply.send_message(codeblock(f'Changed max_chars of model {SETTINGS["model"]} to {SETTINGS["reply_memory"]}'))
+            SETTINGS["reply_memory"] = reply_memory
+            await interaction.response.send_message(codeblock(f'Changed max_chars of model {SETTINGS["model"]} to {reply_memory}'))
         else:
             print(Fore.RED + f'[{datetime.datetime.now()}::INVALID INPUT] FOR COMMAND $crm')
             await interaction.response.send_message(codeblock(f'Invalid parameters, maintaining current settings ({encodeSettings()})'))
