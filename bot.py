@@ -1,33 +1,42 @@
-import asyncio
+import functools
 import os
 import random
 import re
+import asyncio
 import discord
 import datetime
-import threading
+from discord import app_commands
+from discord.ext import commands
 from os.path import join, dirname
 from dotenv import load_dotenv
 from colorama import Fore
 from openai import OpenAI
 from openai import RateLimitError
+from functools import reduce
 
 ai = OpenAI()
 load_dotenv()
 
 intents = discord.Intents.default()
 intents.message_content = True
-
-client = discord.Client(intents=intents)
+bot = commands.Bot(command_prefix="$", intents=intents)
+tree = bot.tree
 
 SYS_PROMPT = "You are Ryan Lee, a college student who likes videogames, memes, and anime. You have weird humor and you have many opinions."
 MSG_PROB = 0.01
+ADMIN = "jcho_114"
 MODELS = {
     "MASHYY": "ft:gpt-3.5-turbo-1106:personal::8Mo0BVif",
-    "COMBINED": "ft:gpt-3.5-turbo-1106:personal::8MqQfeYh"
+    "COMBINED-LEGACY": "ft:gpt-3.5-turbo-1106:personal::8MqQfeYh",
+    "COMBINED": "ft:gpt-3.5-turbo-1106:personal::8Nxi2PqH"
 }
 SETTINGS = {
-    "temperature": 1.0,
-    "model": "COMBINED"
+    "temperature": 0.6,
+    "model": "COMBINED",
+    "reply_memory": 4,
+    "frequency_penalty": 0,
+    "presence_penalty": 0,
+    "max_chars": 500
 }
 
 def formatter(Q, R):
@@ -36,10 +45,10 @@ def formatter(Q, R):
     return json_str
 
 def filter(M):
-    M = re.sub(r"<@!\d{18}>", "", M)
-    M = re.sub(r"<@\d{18}>", "", M)
-    M = re.sub(r"<@&\d{18}>", "", M)
-    M = re.sub(r"<:.+:\d{18}>", "", M)
+    M = re.sub(r"<@!\d{18,}>", "", M)
+    M = re.sub(r"<@\d{18,}>", "", M)
+    M = re.sub(r"<@&\d{18,}>", "", M)
+    M = re.sub(r"<:.+:\d{18,}>", "", M)
     M = re.sub(r"\\|\"|\n", "", M)
     M = re.sub(r"^ +", "", M)
     M = re.sub(r" +$", "", M)
@@ -49,115 +58,265 @@ def filter(M):
 def isValidMessage(M):
     return not M.startswith("https://") and filter(M) != "" and not re.match(r'"', M)
 
-async def generateResponse(M):
-    try:
-        completion = ai.chat.completions.create(
+def to_thread(func):
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        return await asyncio.to_thread(func, *args, **kwargs)
+    return wrapper
+
+async def generateResponse(ctx):
+    async def replyHistory(ctx):
+        res = [filter(ctx.content)]
+        count = 0
+        messages = set()
+        while ctx.reference and count < SETTINGS["reply_memory"]:
+            channel = bot.get_channel(ctx.reference.channel_id)
+            ctx = await channel.fetch_message(ctx.reference.message_id)
+            filtered = filter(ctx.content)
+            res.append(filtered)
+            if filtered not in messages:
+                messages.add(filtered)
+                count += 1
+        return res
+    @to_thread
+    def addToPromptList(history, prompts):
+        messages = set()
+        while len(history):
+            message = history.pop()
+            if message not in messages:
+                prompts.append({"role": "user" if len(history) % 2 != 0 else "assistant", "content": message})
+            messages.add(message)
+    @to_thread
+    def completeScenario(prev_messages):
+        return ai.chat.completions.create(
             model=f'{MODELS[SETTINGS["model"]]}',
             temperature=SETTINGS["temperature"],
-            messages=[
-                {
-                    "role": "system", "content": f'You are Ryan Lee, aka ChatGPLee, a college student who likes videogames, memes, and anime. You have weird humor and you have many opinions.',
-                    "role": "system", "content": f'Please respond to this message {filter(M.content)}. keep it less than 280 characters, and do not repeat anything that was mentioned here. Also do not repeat the aforementioned message.',
-                }
-            ]
+            messages=prev_messages,
+            frequency_penalty=SETTINGS["frequency_penalty"],
+            presence_penalty=SETTINGS["presence_penalty"],
+            max_tokens=SETTINGS["max_chars"]
         )
+    try:
+        prev_messages = [
+            {"role": "system", "content": f'You are Ryan Lee, a college student who likes videogames, memes, and anime. You have weird humor and you have many opinions.'}
+        ]
+        replies = await replyHistory(ctx)
+        await addToPromptList(replies[:-1], prev_messages)
+        prev_messages.append({"role": "system", "content": f"Reply to the this most recent user message in the pursuit of continuing the conversation: {replies[-1]}"})
+        completion = await completeScenario(prev_messages)
         response = completion.choices[0].message.content
         print(Fore.GREEN + f'[{datetime.datetime.now()}::MESSAGE GENERATED] {response}')
-        await M.channel.send(f'<@{M.author.id}> {response}')
+        await ctx.reply(f'{response}', mention_author=False)
     except RateLimitError:
         print(Fore.RED + f'[{datetime.datetime.now()}::ERROR] RATE LIMIT EXCEEDED')
-        await M.channel.send(random.choice(["oh no my wifi broke", "dinner time", "sorry my dad is calling me"]))
+        await ctx.channel.send(random.choice(["oh no my wifi broke", "dinner time", "sorry my dad is calling me"]))
 
-async def history(M):
-        print(Fore.GREEN + f'[{datetime.datetime.now()}::STARTING]')
-        res = ''
-        output_name = ''
-        limit = 0
-        if re.match(r"\$history (.+) (.+) ([1-9][0-9]*)", M.content):
-            username = re.match(r"\$history (.+) (.+) ([1-9][0-9]*)", M.content)[1]
-            output_name = re.match(r"\$history (.+) (.+) ([1-9][0-9]*)", M.content)[2]
-            limit = int(re.match(r"\$history (.+) (.+) ([1-9][0-9]*)", M.content)[3])
-        else: await M.channel.send("Invalid Command Format")
-        for guild in client.guilds:
-            if guild == M.guild:
-                for channel in guild.channels:
-                    if isinstance(channel, discord.TextChannel):
-                        prev = None
-                        async for M in channel.history(limit=limit):
-                            if M.author.name.lower() == username.lower() and isValidMessage(M.content):
-                                print(Fore.GREEN + f'[{datetime.datetime.now()}::MESSAGE FOUND] {filter(M.content)}')
-                                print(Fore.GREEN + f'[{datetime.datetime.now()}::PREVIOUS MESSAGE] {filter(prev.content) if prev else "NONE"}')
-                                res += formatter(prev.content if prev else "generic message", M.content) + '\n'
-                            if M.author.name.lower() != username.lower() and isValidMessage(M.content):
-                                prev = M
-        f = open(f"{output_name}", "w")
-        f.write(res[:-1])
-        f.close()
-        print(Fore.GREEN + f'[{datetime.datetime.now()}::DONE]')
-        await M.channel.send(file=discord.File(f"{output_name}"))
+tree.remove_command("help")
 
-async def ct(M):
-    if re.match(r'^\$ct (0.\d+|1|1.\d+|2|2.0)$', M.content):
-        temperature = float(re.match(r'^\$ct (0.\d+|1|1.\d+|2|2.0)$', M.content)[1])
-        if temperature > 0 and temperature <= 2.0:
-            SETTINGS["temperature"] = temperature
-        print(Fore.GREEN + f'[{datetime.datetime.now()}::CHANGING TEMPERATURE] NEW TEMPERATURE: {temperature}')
-        await M.channel.send(codeblock(f'Changed temperature of model {SETTINGS["model"]} to {SETTINGS["temperature"]}'))
-    else:
-        print(Fore.RED + f'[{datetime.datetime.now()}::INVALID INPUT] FOR COMMAND $ct')
-        await M.channel.send(codeblock(f'Invalid parameters, maintaining current settings (model: {SETTINGS["model"]}, temperature: {SETTINGS["temperature"]})'))
+def encodeSettings():
+    return reduce(lambda acc, el: acc + f'{el}: {SETTINGS[el]}, ', SETTINGS.keys(), "")[:-2]
 
-async def cm(M):
-    if re.match(r'^\$cm (MASHYY|COMBINED)$', M.content):
-        model = re.match(r'^\$cm (MASHYY|COMBINED)$', M.content)[1]
-        SETTINGS["model"] = model
-        print(Fore.GREEN + f'[{datetime.datetime.now()}::CHANGING MODEL] NEW MODEL: {model}')
-        await M.channel.send(codeblock(f'Changed model to {SETTINGS["model"]}'))
-    else:
-        print(Fore.RED + f'[{datetime.datetime.now()}::INVALID INPUT] FOR COMMAND $cm')
-        await M.channel.send(codeblock(f'Invalid parameters, maintaining current settings (model: {SETTINGS["model"]}, temperature: {SETTINGS["temperature"]})'))
-
-async def help(M):
+@tree.command(name="help", description="Provides a summary of commands.")
+async def help(interaction):
+    print(Fore.GREEN + f'[{datetime.datetime.now()}::PROVIDING MANUEL]')
     embed = discord.Embed(title="ChatGPLee Commands", description="A list of commands for ChatGPLee")
     embed.add_field(name="$help", value="Provides a summary of commands.", inline=False)
     embed.add_field(name="$settings", value="Provides the bot's current settings.", inline=False)
     embed.add_field(name="@ChatGPLee <message>", value="Format to ask @ChatGPLee a <message>. Uses a fine-tuned gpt3.5-turbo model to send back a response.", inline=False)
     embed.add_field(name="$ss <message-count>", value="Provides a screenshot of the past <message-count> messages in a reply chain.", inline=False)
-    if M.author.name == "jcho_114":
+    if interaction.user.name == "jcho_114":
         embed.add_field(name="**privileged** $history <username> <output-file-name> <limit>", value="Filters past <limit> messages to provide a history of <username> messages in jsonl format.", inline=False)
         embed.add_field(name="**privileged** $ct <temperature>", value="Changes the current bot's temperature to <temperature>. The lower the temperature, the more coherent and less creative the bot is. The opposite it true for high temperatures.", inline=False)
         embed.add_field(name="**privileged** $cm <model>", value="Changes the current bot's model to <model>.", inline=False)
-    await M.channel.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="settings", description="Provides the bot's current settings.")
+async def settings(interaction):
+    print(Fore.GREEN + f'[{datetime.datetime.now()}::PROVIDING SETTINGS]')
+    await interaction.response.send_message(codeblock(encodeSettings()))
+
+async def checkPermissions(interaction):
+    if interaction.user.name == ADMIN:
+        return True
+    else:
+        await interaction.followup.send("Access Denied")
+        return False
+
+@tree.command(name="ct", description="Changes the current bot's temperature to <temperature>.")
+@app_commands.describe(temperature="float between 0 (inclusive) and 2 (noninclusive)")
+async def ct(interaction, temperature: float):
+    if await checkPermissions(interaction):
+        if temperature > 0 and temperature <= 2.0:
+            SETTINGS["temperature"] = temperature
+            print(Fore.GREEN + f'[{datetime.datetime.now()}::CHANGING TEMPERATURE] NEW TEMPERATURE: {temperature}')
+            await interaction.response.send_message(codeblock(f'Changed temperature of model {SETTINGS["model"]} to {SETTINGS["temperature"]}'))
+        else:
+            print(Fore.RED + f'[{datetime.datetime.now()}::INVALID INPUT] FOR COMMAND $ct')
+            await interaction.response.send_message(codeblock(f'Invalid parameters, maintaining current settings ({encodeSettings()})'))
+
+@tree.command(name="cm", description="Changes the current bot's model to <model>.")
+@app_commands.describe(model="Any of the following: COMBINED, MASHYY, COMBINED-LEGACY")
+async def cm(interaction, model: str):
+    if await checkPermissions(interaction):
+        if model in MODELS:
+            SETTINGS["model"] = model
+            print(Fore.GREEN + f'[{datetime.datetime.now()}::CHANGING MODEL] NEW MODEL: {model}')
+            await interaction.reply.send_message(codeblock(f'Changed model of model {SETTINGS["model"]} to {SETTINGS["model"]}'))
+        else:
+            print(Fore.RED + f'[{datetime.datetime.now()}::INVALID INPUT] FOR COMMAND $cm')
+            await interaction.response.send_message(codeblock(f'Invalid parameters, maintaining current settings ({encodeSettings()})'))
+
+@tree.command(name="cmc", description="Changes the current bot's max characters to <max_chars>.")
+@app_commands.describe(max_chars="int between 10 and 1000 inclusive")
+async def cmc(interaction, max_chars: int):
+    if await checkPermissions(interaction):
+        if max_chars >= 10 and max_chars <= 1000:
+            SETTINGS["max_chars"] = max_chars
+            print(Fore.GREEN + f'[{datetime.datetime.now()}::CHANGING MAX_CHARS] NEW MAX_CHARS: {max_chars}')
+            await interaction.reply.send_message(codeblock(f'Changed max_chars of model {SETTINGS["model"]} to {SETTINGS["max_chars"]}'))
+        else:
+            print(Fore.RED + f'[{datetime.datetime.now()}::INVALID INPUT] FOR COMMAND $cmc')
+            await interaction.response.send_message(codeblock(f'Invalid parameters, maintaining current settings ({encodeSettings()})'))
+
+@tree.command(name="crm", description="Changes the current bot's reply memory to <reply_memory>.")
+@app_commands.describe(reply_memory="int between 1 and 10 (inclusive)")
+async def crm(interaction, reply_memory: int):
+    if await checkPermissions(interaction):
+        if reply_memory > 0 and reply_memory <= 10:
+            SETTINGS["reply_memory"] = reply_memory
+            print(Fore.GREEN + f'[{datetime.datetime.now()}::CHANGING MAX_CHARS] NEW MAX_CHARS: {reply_memory}')
+            await interaction.reply.send_message(codeblock(f'Changed max_chars of model {SETTINGS["model"]} to {SETTINGS["reply_memory"]}'))
+        else:
+            print(Fore.RED + f'[{datetime.datetime.now()}::INVALID INPUT] FOR COMMAND $crm')
+            await interaction.response.send_message(codeblock(f'Invalid parameters, maintaining current settings ({encodeSettings()})'))
+
+@tree.command(name="history", description="Filters past <limit> messages to provide a history of <username> messages in jsonl format.")
+@app_commands.describe(username="username of target", output_name="name of jsonl file", generation_method="one of GPT and PREV", limit="number of past messages bot looks through")
+async def history(interaction, username: str, output_name: str, generation_method: str, limit: int):
+    async def prev(limit):
+        nonlocal res
+        prev = None
+        async for message in channel.history(limit=limit):
+            if message.author.name.lower() == username.lower() and isValidMessage(message.content):
+                print(Fore.GREEN + f'[{datetime.datetime.now()}::MESSAGE FOUND] {filter(message.content)}')
+                print(Fore.GREEN + f'[{datetime.datetime.now()}::PREVIOUS MESSAGE] {filter(prev.content) if prev else "NONE"}')
+                res += formatter(prev.content if prev else "generic message", message.content) + '\n'
+            if message.author.name.lower() != username.lower() and isValidMessage(message.content):
+                prev = message
+    @to_thread
+    def generateQuestion(response):
+        completion = ai.chat.completions.create(
+            model='gpt-3.5-turbo-1106',
+            max_tokens=random.randint(20,60),
+            messages=[
+                {"role": "system", "content": f"Create a single message that would plausibly lead to this response: \"{response}\". "
+                 + "Make it general, casual, and short, basically a quick text in a groupchat of friends. Do not include any "
+                 + "emojis. It doesn't have to be a question."}
+            ]
+        )
+        return completion.choices[0].message.content
+    async def gpt(limit):
+        nonlocal res
+        async for message in channel.history(limit=limit):
+            if message.author.name.lower() == username.lower() and isValidMessage(message.content):
+                print(Fore.GREEN + f'[{datetime.datetime.now()}::MESSAGE FOUND] {filter(message.content)}')
+                question = await generateQuestion(message.content)
+                res += formatter(question, message.content) + '\n'
+                print(Fore.GREEN + f'[{datetime.datetime.now()}::GENERATED QUESTION] {filter(question)}')
+    print(Fore.GREEN + f'[{datetime.datetime.now()}::STARTING HISTORY]')
+    await interaction.response.defer()
+    if await checkPermissions(interaction):
+        res = ''
+        for channel in interaction.guild.channels:
+            if isinstance(channel, discord.TextChannel):
+                if generation_method == "PREV":
+                    await prev(limit)
+                elif generation_method == "GPT":
+                    await gpt(limit)
+                else:
+                    await interaction.response.send_message("Invalid Command Format")
+        f = open(f"{output_name}", "w")
+        f.write(res[:-1])
+        f.close()
+        print(Fore.GREEN + f'[{datetime.datetime.now()}::DONE]')
+        await interaction.followup.send(file=discord.File(f"{output_name}"))
+
+@tree.command(name="sync", description="Syncs commands")
+async def sync(interaction):
+    if await checkPermissions(interaction):
+        try:
+            synced = await tree.sync()
+            message = f'Synced {len(synced)} command(s)'
+            print(message)
+            await interaction.response.send_message(message)
+        except Exception as e:
+            print(e)
+            await interaction.response.send_message("Failed to sync command(s)")
+
+@bot.command()
+async def sync(ctx):
+    if ctx.author.name == ADMIN :
+        try:
+            synced = await tree.sync()
+            message = f'Synced {len(synced)} command(s)'
+            print(message)
+            await ctx.channel.send(message)
+        except Exception as e:
+            print(e)
+            await ctx.channel.send("Failed to sync command(s)")
+    else:
+        await ctx.channel.send("Access Denied")
+
+@bot.command()
+async def history(ctx):
+    @to_thread
+    def generateQuestion(response):
+        completion = ai.chat.completions.create(
+            model='gpt-3.5-turbo-1106',
+            max_tokens=random.randint(20,60),
+            messages=[
+                {"role": "system", "content": f"You are Ryan Lee, a college student who likes videogames, memes, and anime. "
+                 + "You have weird humor and you have many opinions."},
+                {"role": "system", "content": f"Create a single message that would lead to this response: \"{response}\". "
+                 + "Make it general, casual, and short, basically a quick text in a groupchat of friends. Do not include any "
+                 + "emojis. It doesn't have to be a question. Do not repeat the original message verbatim."}
+            ]
+        )
+        return completion.choices[0].message.content
+    async def gpt(limit):
+        nonlocal res
+        async for message in channel.history(limit=limit):
+            if message.author.name.lower() == '.mashyy.' and isValidMessage(message.content):
+                print(Fore.GREEN + f'[{datetime.datetime.now()}::MESSAGE FOUND] {filter(message.content)}')
+                question = await generateQuestion(message.content)
+                res += formatter(question, message.content) + '\n'
+                print(Fore.GREEN + f'[{datetime.datetime.now()}::GENERATED QUESTION] {filter(question)}')
+    print(Fore.GREEN + f'[{datetime.datetime.now()}::STARTING HISTORY]')
+    if ctx.author.name == ADMIN:
+        res = ''
+        for channel in ctx.guild.channels:
+            if isinstance(channel, discord.TextChannel):
+                await gpt(2000)
+        f = open(f"test.jsonl", "w")
+        f.write(res[:-1])
+        f.close()
+        print(Fore.GREEN + f'[{datetime.datetime.now()}::DONE]')
+        await ctx.channel.send(file=discord.File(f"test.jsonl"))
 
 def codeblock(M):
     return f'```python\n{M}\n```'
 
-@client.event
+@bot.event
 async def on_ready():
-    print(f'We have logged in as {client.user}')
+    print(f'We have logged in as {bot.user}')
 
-@client.event
+@bot.event
 async def on_message(message):
-    if message.author == client.user:
+    if message.author == bot.user:
         return
-    # public commands
-    if message.content == '$help':
-        print(Fore.GREEN + f'[{datetime.datetime.now()}::PROVIDING MANUEL]')
-        await help(message)
-    if message.content == '$settings':
-        print(Fore.GREEN + f'[{datetime.datetime.now()}::PROVIDING SETTINGS]')
-        await message.channel.send(codeblock(f'mode: {SETTINGS["model"]}, temperature: {SETTINGS["temperature"]}'))
-    if client.user.mentioned_in(message) or random.random() < MSG_PROB:
+    if bot.user.mentioned_in(message) or random.random() < MSG_PROB:
         print(Fore.GREEN + f'[{datetime.datetime.now()}::GENERATING MESSAGE] RESPONDING TO {message.author.nick}: {message.content}')
         await generateResponse(message)
-        await asyncio.sleep(1)
-    # privileged commands
-    if message.author.name == "jcho_114":
-        if message.content.startswith('$history'):
-            await history(message)
-        if message.content.startswith("$ct"):
-            await ct(message)
-        if message.content.startswith("$cm"):
-            await cm(message)
+    await bot.process_commands(message)
 
-client.run(os.environ.get("TOKEN"))
+bot.run(os.environ.get("TOKEN"))
