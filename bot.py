@@ -147,7 +147,7 @@ async def checkPermissions(interaction):
         return False
 
 @tree.command(name="ct", description="Changes the current bot's temperature to <temperature>.")
-@app_commands.describe(temperature="float between 0 (inclusive) and 2 (noninclusive)")
+@app_commands.describe(temperature="float between 0 (noninclusive) and 2 (inclusive)")
 async def ct(interaction, temperature: float):
     if await checkPermissions(interaction):
         if temperature > 0 and temperature <= 2.0:
@@ -159,7 +159,7 @@ async def ct(interaction, temperature: float):
             await interaction.response.send_message(codeblock(f'Invalid parameters, maintaining current settings ({encodeSettings()})'))
 
 @tree.command(name="cm", description="Changes the current bot's model to <model>.")
-@app_commands.describe(model="Any of the following: COMBINED, MASHYY, COMBINED-LEGACY")
+@app_commands.describe(model="Any of the following: COMBINED, MASHYY, COMBINED-LEGACY, GPT3")
 async def cm(interaction, model: str):
     if await checkPermissions(interaction):
         if model in MODELS:
@@ -245,7 +245,7 @@ async def history(interaction, username: str, output_name: str, generation_metho
         print(Fore.GREEN + f'[{datetime.datetime.now()}::DONE]')
         await interaction.followup.send(file=discord.File(f"{output_name}"))
 
-@tree.command(name="sync", description="Syncs commands")
+@tree.command(name="sync", description="Syncs slash commands")
 async def sync(interaction):
     if await checkPermissions(interaction):
         try:

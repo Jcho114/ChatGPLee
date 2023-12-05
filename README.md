@@ -18,17 +18,7 @@ Provides the bot's current settings.
 ```
 Format to ask @ChatGPLee a \<message\>. Uses a fine-tuned gpt3.5-turbo model to send back a response.
 
-```
-$ss <message-count>
-```
-Provides a screenshot of the past \<message-count\> messages in a reply chain.
-
 ## Privileged Commands
-
-```
-$history <username> <output-file-name> <limit>
-```
-Filters past \<limit\> messages to provide a history of \<username\> messages in jsonl format.
 
 ```
 $ct <temperature>
@@ -44,3 +34,27 @@ Changes the current bot's model to \<model\>.
 \<model\> is currently limited to two inputs:
 - MASHYY
 - COMBINED
+- COMBINED-LEGACY
+- GPT3
+
+```
+$cmc <max_chars>
+```
+Changes the current bot's max characters to \<max_chars\>.
+\<max_chars\> is limited to int values between 10 and 1000 inclusive.
+
+```
+$crm <reply_memory>
+```
+Changes the current bot's reply memory to \<reply_memory\>.
+\<reply_memory\> is limited to int values between 1 and 10 inclusive.
+
+```
+$history <username> <output-file-name> <limit>
+```
+Filters past \<limit\> messages to provide a history of \<username\> messages in jsonl format.
+
+```
+$sync
+```
+Syncs slash commands
